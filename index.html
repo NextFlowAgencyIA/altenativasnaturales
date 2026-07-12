@@ -1722,7 +1722,34 @@
           return;
         }
 
-        // 2) Alternativas: buscar por palabras en beneficios, descripción y categoría
+        // 2) ¿Error de dedo? Buscar nombre parecido ("¿Quisiste decir...?")
+        const sugerencia = findFuzzyCandidate(q);
+        if (sugerencia){
+          addMessage(`🤔 No encontré "${raw}"... ¿quisiste decir "${sugerencia}"?`);
+          addOptions([
+            { label: `✅ Sí, buscar ${sugerencia}`, action: () => {
+              addMessage(sugerencia, "user");
+              searchAndRespond(sugerencia);
+            }},
+            { label: "❌ No, era otra cosa", action: () => {
+              addMessage("No, era otra cosa", "user");
+              buscarAlternativas(raw, q);
+            }}
+          ]);
+          return;
+        }
+
+        // 3) Alternativas por beneficios / descripción / categoría
+        await buscarAlternativas(raw, q);
+      } catch (e){
+        console.error("Error buscando en Supabase:", e);
+        addMessage("Tuve un problema consultando el catálogo en este momento. Puedes preguntar directo a una sucursal:");
+        addBranchOptions(`Hola, quisiera saber si tienen: ${raw}`);
+      }
+    }
+
+    async function buscarAlternativas(raw, q){
+      try {
         const words = q.split(" ").filter(w => w.length >= 4);
         let alternativas = [];
         if (words.length){
@@ -1744,14 +1771,52 @@
           return;
         }
 
-        // 3) No hay nada: derivar a sucursal
         addMessage(`Por el momento no encontré "${raw}" en el catálogo en línea. Nuestro inventario en tienda es más amplio — puedes confirmar directo con una sucursal:`);
         addBranchOptions(`Hola, ¿tienen ${raw}? Lo busqué en su página y quisiera confirmar disponibilidad.`);
       } catch (e){
-        console.error("Error buscando en Supabase:", e);
-        addMessage("Tuve un problema consultando el catálogo en este momento. Puedes preguntar directo a una sucursal:");
+        console.error("Error buscando alternativas:", e);
+        addMessage("Tuve un problema consultando el catálogo. Puedes preguntar directo a una sucursal:");
         addBranchOptions(`Hola, quisiera saber si tienen: ${raw}`);
       }
+    }
+
+    // ====== "¿QUISISTE DECIR?" (distancia de Levenshtein) ======
+    function levenshtein(a, b){
+      const m = a.length, n = b.length;
+      if (!m) return n;
+      if (!n) return m;
+      const dp = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+      for (let j = 1; j <= n; j++) dp[0][j] = j;
+      for (let i = 1; i <= m; i++){
+        for (let j = 1; j <= n; j++){
+          const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+          dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+        }
+      }
+      return dp[m][n];
+    }
+
+    function findFuzzyCandidate(q){
+      const qWords = q.split(" ").filter(w => w.length >= 4);
+      const queries = qWords.length ? qWords : [q];
+      let best = null;
+      let bestDist = Infinity;
+
+      products.forEach(p => {
+        const texto = normalize(`${p.name} ${p.marca || ""}`);
+        const nameWords = texto.split(/\s+/).filter(w => w.length >= 4);
+        queries.forEach(qw => {
+          nameWords.forEach(nw => {
+            const d = levenshtein(qw, nw);
+            const maxPermitido = Math.max(1, Math.floor(nw.length / 4) + 1);
+            if (d > 0 && d <= maxPermitido && d < bestDist){
+              bestDist = d;
+              best = p.name;
+            }
+          });
+        });
+      });
+      return best;
     }
 
     function addProductResults(lista, esAlternativa = false){
