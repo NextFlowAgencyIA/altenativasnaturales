@@ -1028,7 +1028,30 @@
   </style>
 </head>
 <body>
+  <body>
+
+  <!-- ============ LOGIN GATE ============ -->
+  <div id="login-gate" style="position:fixed;inset:0;background:#083c2c;display:flex;align-items:center;justify-content:center;z-index:9999;">
+    <div style="background:white;border-radius:16px;padding:36px;width:100%;max-width:380px;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="width:48px;height:48px;background:#0b6b46;border-radius:12px;display:flex;align-items:center;justify-content:center;color:white;font-weight:900;margin:0 auto 12px;">an</div>
+        <h2 style="margin:0;font-size:1.3rem;font-weight:900;">Alternativas Naturales</h2>
+        <p style="color:#607067;font-size:.85rem;margin:4px 0 0;">Panel administrativo</p>
+      </div>
+      <div id="login-error" style="display:none;background:#fce4e4;color:#a72424;padding:10px 14px;border-radius:8px;font-size:.85rem;margin-bottom:14px;"></div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:.8rem;font-weight:800;margin-bottom:6px;color:#0a5037;">Correo</label>
+        <input type="email" id="login-email" placeholder="tu@correo.com" style="width:100%;border:1px solid #e5ece8;border-radius:10px;padding:10px 12px;font-size:.9rem;outline:0;box-sizing:border-box;">
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="display:block;font-size:.8rem;font-weight:800;margin-bottom:6px;color:#0a5037;">Contraseña</label>
+        <input type="password" id="login-password" placeholder="••••••••" style="width:100%;border:1px solid #e5ece8;border-radius:10px;padding:10px 12px;font-size:.9rem;outline:0;box-sizing:border-box;">
+      </div>
+      <button id="login-btn" style="width:100%;background:#0b8052;color:white;border:0;border-radius:10px;padding:12px;font-weight:800;cursor:pointer;font-size:.95rem;">Entrar</button>
+    </div>
+  </div>
   <div class="demo-banner">
+ 
     🎨 <strong>VISTA PREVIA DEL PLAN PRO</strong> — Este es el panel administrativo que incluye el plan. Los datos son de ejemplo. · <a href="alternativas-naturales.html" style="color:white;text-decoration:underline;">Volver al sitio</a>
   </div>
 
@@ -2159,7 +2182,50 @@
     </div>
   </div>
 
-  <script>
+<!-- ============ SUPABASE SDK Y CONEXIÓN ============ -->            
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>   ↑                                                          ↑
+   el src va AQUÍ, dentro de la etiqueta            y se cierra inmediatamente después
+    
+    const SUPABASE_URL = 'https://krqyoxpwtbtjomzmgszj.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_fbvpoJzkTmDket8RPF8rAQ_jFxI7PFR';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    console.log('Supabase conectado:', supabaseClient ? '✅' : '❌');
+
+    // ============ LOGIN ============
+    const loginGate = document.getElementById('login-gate');
+    const loginBtn = document.getElementById('login-btn');
+    const loginError = document.getElementById('login-error');
+
+    async function checkSession() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session) {
+        loginGate.style.display = 'none';
+        console.log('Sesión activa:', session.user.email);
+      } else {
+        loginGate.style.display = 'flex';
+      }
+    
+    loginBtn.addEventListener('click', async () => {
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+
+      loginError.style.display = 'none';
+      loginBtn.textContent = 'Entrando...';
+
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        loginError.textContent = 'Correo o contraseña incorrectos.';
+        loginError.style.display = 'block';
+        loginBtn.textContent = 'Entrar';
+      } else {
+        loginGate.style.display = 'none';
+        console.log('Login exitoso:', data.user.email);
+      }
+    });
+
+    checkSession();
+  </script>
     // Navegación entre vistas
     const titles = {
       dashboard: { title: "Resumen", subtitle: "Vista general de tu negocio" },
