@@ -1416,6 +1416,15 @@
     </div>
   </div>
 
+  <!-- ============ SUPABASE ============ -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://krqyoxpwtbtjomzmgszj.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_fbvpoJzkTmDket8RPF8rAQ_jFxI7PFR';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    console.log('Supabase conectado:', supabaseClient ? '✅' : '❌');
+  </script>
+
   <script>
     const branches = [
       { name: "Soriana San Miguel", zone: "San Miguel, Apodaca", phone: "528134026211", display: "81 3402 6211" },
@@ -1660,7 +1669,7 @@
         return;
       }
 
-      if (/(promocion|oferta|descuento|precio|costo)/.test(text)){
+      if (/(promocion|oferta|descuento)/.test(text)){
         addMessage("Las promociones, precios y disponibilidad pueden cambiar. Selecciona una sucursal para pedir la información actual:");
         addBranchOptions(`Hola, quisiera información de promociones o precio sobre: ${raw}`);
         return;
@@ -1675,35 +1684,114 @@
         return;
       }
 
-      if (/(dormir|sueno|insomnio|relaj|estres|ansiedad)/.test(text)){
-        addMessage("Tenemos una categoría de sueño y relajación. La elección depende de cada persona y de sus antecedentes. Puedo ayudarte a preguntar por opciones disponibles sin sustituir la orientación profesional.");
-        addBranchOptions(`Hola, busco información sobre productos de sueño o relajación. Mi consulta es: ${raw}`);
-        return;
-      }
-
-      if (/(articulacion|rodilla|hueso|movilidad|dolor|colageno)/.test(text)){
-        addMessage("Puedes revisar la categoría de articulaciones, movilidad y colágeno. Para saber presentaciones, precios y existencias, elige una sucursal:");
-        addBranchOptions(`Hola, quisiera información sobre productos para articulaciones o colágeno. Busco: ${raw}`);
-        return;
-      }
-
-      if (/(magnesio|vitamina|omega|probio|fibra|proteina|producto|suplemento|te|extracto|capsula)/.test(text)){
-        addMessage(`Entendido. Buscas información sobre "${raw}". Para confirmar marca, presentación, precio y existencia, selecciona una sucursal:`);
-        addBranchOptions(`Hola, quisiera saber si tienen este producto: ${raw}`);
-        return;
-      }
-
       if (/(gracias|listo|perfecto)/.test(text)){
         addMessage("¡Con gusto! Cuando lo necesites, puedo mostrarte las sucursales o ayudarte a abrir WhatsApp.");
         return;
       }
 
-      addMessage("Puedo orientarte por categorías y ayudarte a contactar una sucursal. Para una respuesta más precisa, escribe el nombre del producto o elige una opción.");
-      addOptions([
-        {label:"Ver sucursales", action:() => addBranchOptions()},
-        {label:"Buscar producto", action:() => { addMessage("Escribe el nombre del producto."); chatInput.focus(); }},
-        {label:"Preguntas frecuentes", action:showFaq}
-      ]);
+      // Cualquier otra consulta: buscar en el catálogo real de Supabase
+      searchAndRespond(raw);
+    }
+
+    // ====== BÚSQUEDA REAL EN SUPABASE ======
+    function sanitizeQuery(q){
+      return normalize(q).replace(/[,%()]/g, " ").replace(/\s+/g, " ").trim();
+    }
+
+    async function searchAndRespond(raw){
+      const q = sanitizeQuery(raw);
+      if (!q){
+        addMessage("Escribe el nombre del producto que buscas y lo consulto en nuestro catálogo.");
+        return;
+      }
+      addMessage("🔎 Déjame revisar nuestro catálogo...");
+      try {
+        // 1) Búsqueda directa por nombre o marca
+        let { data: exactos, error } = await supabaseClient
+          .from("productos")
+          .select("*")
+          .eq("activo", true)
+          .or(`nombre.ilike.%${q}%,marca.ilike.%${q}%`)
+          .limit(4);
+        if (error) throw error;
+        exactos = (exactos || []).filter(p => p.stock == null || p.stock > 0);
+
+        if (exactos.length){
+          addMessage(exactos.length === 1 ? "¡Sí lo tenemos disponible! 🎉" : "¡Encontré estas opciones en nuestro catálogo! 🎉");
+          addProductResults(exactos);
+          return;
+        }
+
+        // 2) Alternativas: buscar por palabras en beneficios, descripción y categoría
+        const words = q.split(" ").filter(w => w.length >= 4);
+        let alternativas = [];
+        if (words.length){
+          const orParts = words.map(w =>
+            `nombre.ilike.%${w}%,beneficios.ilike.%${w}%,descripcion.ilike.%${w}%,categoria.ilike.%${w}%`
+          ).join(",");
+          const res = await supabaseClient
+            .from("productos")
+            .select("*")
+            .eq("activo", true)
+            .or(orParts)
+            .limit(4);
+          alternativas = (res.data || []).filter(p => p.stock == null || p.stock > 0);
+        }
+
+        if (alternativas.length){
+          addMessage(`No encontré exactamente "${raw}", pero tengo estas alternativas que pueden servir para lo mismo:`);
+          addProductResults(alternativas, true);
+          return;
+        }
+
+        // 3) No hay nada: derivar a sucursal
+        addMessage(`Por el momento no encontré "${raw}" en el catálogo en línea. Nuestro inventario en tienda es más amplio — puedes confirmar directo con una sucursal:`);
+        addBranchOptions(`Hola, ¿tienen ${raw}? Lo busqué en su página y quisiera confirmar disponibilidad.`);
+      } catch (e){
+        console.error("Error buscando en Supabase:", e);
+        addMessage("Tuve un problema consultando el catálogo en este momento. Puedes preguntar directo a una sucursal:");
+        addBranchOptions(`Hola, quisiera saber si tienen: ${raw}`);
+      }
+    }
+
+    function addProductResults(lista, esAlternativa = false){
+      lista.forEach(p => {
+        // Asegurar que el producto esté disponible para el carrito
+        if (!products.find(x => x.id === p.id)) products.push(mapProduct(p));
+
+        const card = document.createElement("div");
+        card.className = "chat-branch";
+        const descCorta = (p.descripcion || p.beneficios || "").slice(0, 90);
+        card.innerHTML = `
+          <strong>${prodIconInline(p.imagen)} ${p.nombre}${p.marca ? " · " + p.marca : ""}</strong>
+          <small style="display:block;color:var(--muted);margin:3px 0 6px">${descCorta}${esAlternativa && p.beneficios ? "" : ""}</small>
+          <div style="font-weight:900;color:var(--green-800);margin-bottom:8px">$${p.precio}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" class="chat-add-cart" data-id="${p.id}" style="border:1px solid var(--green-500);background:var(--green-50);color:var(--green-800);border-radius:999px;padding:7px 13px;font-weight:800;font-size:.82rem;cursor:pointer">🛒 Agregar al carrito</button>
+            <button type="button" class="chat-ask-wa" data-id="${p.id}" style="border:0;background:var(--green-700);color:white;border-radius:999px;padding:7px 13px;font-weight:800;font-size:.82rem;cursor:pointer">💬 Pedir por WhatsApp</button>
+          </div>
+        `;
+        chatMessages.appendChild(card);
+
+        card.querySelector(".chat-add-cart").addEventListener("click", () => {
+          addToCart(p.id);
+          addMessage(`${p.nombre} agregado al carrito 🛒 Puedes seguir buscando o enviar tu pedido desde el botón del carrito.`);
+        });
+
+        card.querySelector(".chat-ask-wa").addEventListener("click", () => {
+          addMessage(`Pedir: ${p.nombre}`, "user");
+          addMessage("¡Claro! Elige la sucursal a la que quieres enviar tu pedido:");
+          addBranchOptions(`Hola, quisiera pedir: ${p.nombre}${p.marca ? " (" + p.marca + ")" : ""} — $${p.precio}. ¿Lo tienen disponible?`);
+        });
+      });
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function prodIconInline(imagen){
+      if (imagen && String(imagen).startsWith("http")){
+        return `<img src="${imagen}" alt="" style="width:22px;height:22px;object-fit:cover;border-radius:6px;vertical-align:middle">`;
+      }
+      return imagen || "🌿";
     }
 
     document.getElementById("chat-form").addEventListener("submit", event => {
@@ -1732,48 +1820,69 @@
         const category = card.dataset.category;
         openChat();
         addMessage(category,"user");
-        setTimeout(() => {
-          addMessage(`Seleccionaste "${category}". Puedo ayudarte a confirmar productos disponibles con una sucursal.`);
-          addBranchOptions(`Hola, quisiera información sobre la categoría: ${category}`);
-        }, 220);
+        setTimeout(() => searchAndRespond(category), 220);
       });
     });
 
     document.getElementById("year").textContent = new Date().getFullYear();
 
     // ====== CATÁLOGO Y CARRITO ======
-    const products = [
-      { id: 1, name: "Magnesio Citrato", desc: "60 cápsulas · Apoyo muscular y nervioso", price: 250, icon: "💊", category: "vitaminas", tag: "Popular" },
-      { id: 2, name: "Colágeno Hidrolizado", desc: "500g · Piel, cabello y articulaciones", price: 380, icon: "✨", category: "belleza", tag: "Top" },
-      { id: 3, name: "Vitamina C 1000mg", desc: "100 tabletas · Sistema inmune", price: 180, icon: "🍊", category: "vitaminas" },
-      { id: 4, name: "Omega 3", desc: "100 cápsulas · Salud cardiovascular", price: 320, icon: "🐟", category: "vitaminas" },
-      { id: 5, name: "Probióticos", desc: "30 cápsulas · Flora intestinal", price: 295, icon: "🌱", category: "digestion" },
-      { id: 6, name: "Té Verde", desc: "25 sobres · Antioxidante natural", price: 85, icon: "🍵", category: "herbolaria" },
-      { id: 7, name: "Ashwagandha", desc: "60 cápsulas · Estrés y energía", price: 290, icon: "🌿", category: "herbolaria", tag: "Nuevo" },
-      { id: 8, name: "Spirulina", desc: "200 tabletas · Súper alimento", price: 215, icon: "🌊", category: "vitaminas" },
-      { id: 9, name: "Cúrcuma + Piperina", desc: "60 cápsulas · Antiinflamatorio", price: 260, icon: "🌶️", category: "herbolaria" },
-      { id: 10, name: "Multivitamínico Mujer", desc: "60 tabletas · Vitaminas y minerales", price: 340, icon: "💗", category: "vitaminas" },
-      { id: 11, name: "Melatonina 5mg", desc: "60 cápsulas · Apoyo para dormir", price: 195, icon: "🌙", category: "sueno" },
-      { id: 12, name: "Valeriana", desc: "30 cápsulas · Relajación natural", price: 145, icon: "💤", category: "sueno" },
-      { id: 13, name: "Aceite de Coco", desc: "500ml · Extra virgen orgánico", price: 175, icon: "🥥", category: "belleza" },
-      { id: 14, name: "Fibra Natural", desc: "250g · Tránsito intestinal", price: 165, icon: "🌾", category: "digestion" },
-      { id: 15, name: "Biotina", desc: "60 cápsulas · Cabello y uñas fuertes", price: 220, icon: "💅", category: "belleza" },
-      { id: 16, name: "Manzanilla", desc: "30 sobres · Té relajante", price: 65, icon: "🌼", category: "sueno" }
+    // Productos demo (fallback si Supabase no responde)
+    const demoProducts = [
+      { id: -1, name: "Magnesio Citrato", desc: "60 cápsulas · Apoyo muscular y nervioso", price: 250, icon: "💊", category: "vitaminas" },
+      { id: -2, name: "Colágeno Hidrolizado", desc: "500g · Piel, cabello y articulaciones", price: 380, icon: "✨", category: "belleza" },
+      { id: -3, name: "Vitamina C 1000mg", desc: "100 tabletas · Sistema inmune", price: 180, icon: "🍊", category: "vitaminas" }
     ];
+
+    let products = demoProducts.slice();
+
+    function mapProduct(p){
+      return {
+        id: p.id,
+        name: p.nombre,
+        desc: p.descripcion || p.beneficios || "",
+        price: p.precio,
+        icon: p.imagen || "🌿",
+        category: p.categoria || "",
+        marca: p.marca || "",
+        tag: null
+      };
+    }
+
+    async function loadProducts(){
+      try {
+        const { data, error } = await supabaseClient
+          .from("productos")
+          .select("*")
+          .eq("activo", true)
+          .order("nombre");
+        if (error) throw error;
+        const disponibles = (data || []).filter(p => p.stock == null || p.stock > 0);
+        if (disponibles.length){
+          products = disponibles.map(mapProduct);
+          console.log(`Catálogo cargado desde Supabase: ${products.length} productos ✅`);
+        } else {
+          console.warn("Supabase no devolvió productos activos; se muestra catálogo demo.");
+        }
+      } catch (e){
+        console.error("Error cargando catálogo desde Supabase:", e);
+      }
+      renderProducts();
+    }
 
     let cart = []; // [{id, qty}]
     let currentFilter = "todos";
 
     function renderProducts(){
       const grid = document.getElementById("product-grid");
-      const filtered = currentFilter === "todos" ? products : products.filter(p => p.category === currentFilter);
+      const filtered = currentFilter === "todos" ? products : products.filter(p => normalize(String(p.category || "")).includes(currentFilter));
       
       grid.innerHTML = filtered.map(p => {
         const inCart = cart.find(item => item.id === p.id);
         return `
           <article class="product-card">
             <div class="product-image">
-              ${p.icon}
+              ${prodIconBig(p)}
               ${p.tag ? `<span class="product-tag">${p.tag}</span>` : ""}
             </div>
             <div class="product-info">
@@ -1797,6 +1906,13 @@
       });
     }
 
+    function prodIconBig(p){
+      if (p.icon && String(p.icon).startsWith("http")){
+        return `<img src="${p.icon}" alt="${p.name}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`;
+      }
+      return p.icon || "🌿";
+    }
+
     function categoryLabel(cat){
       const labels = {
         vitaminas: "Vitaminas",
@@ -1805,7 +1921,7 @@
         belleza: "Belleza",
         digestion: "Digestión"
       };
-      return labels[cat] || cat;
+      return labels[cat] || (cat ? String(cat) : "General");
     }
 
     function addToCart(productId){
@@ -1878,7 +1994,7 @@
         const p = products.find(prod => prod.id === item.id);
         return `
           <div class="cart-item">
-            <div class="cart-item-icon">${p.icon}</div>
+            <div class="cart-item-icon">${prodIconInline(p.icon)}</div>
             <div class="cart-item-info">
               <div class="cart-item-name">${p.name}</div>
               <div class="cart-item-price">$${p.price} x ${item.qty} = $${p.price * item.qty}</div>
@@ -2025,6 +2141,7 @@
     });
 
     renderProducts();
+    loadProducts();
     // ====== FIN CATÁLOGO ======
 
     renderBranches();
