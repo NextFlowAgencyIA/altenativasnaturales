@@ -1226,6 +1226,16 @@
           </div>
         </div>
         <div class="field">
+          <label>Etiqueta destacada</label>
+          <select id="p-etiqueta">
+            <option value="">Ninguna</option>
+            <option value="Popular">⭐ Popular</option>
+            <option value="Nuevo">✨ Nuevo</option>
+            <option value="Top">🏆 Top ventas</option>
+          </select>
+          <div class="field-hint">Se muestra como insignia sobre la tarjeta del producto en la página pública</div>
+        </div>
+        <div class="field">
           <label>Beneficios</label>
           <textarea rows="2" id="p-beneficios" placeholder="Ej. Apoya el descanso, reduce calambres..."></textarea>
         </div>
@@ -1742,6 +1752,7 @@
       $('p-desc').value = p ? (p.descripcion||'') : '';
       $('p-imagen').value = p ? (p.imagen||'') : '💊';
       $('p-activo').value = p ? String(p.activo !== false) : 'true';
+      $('p-etiqueta').value = p ? (p.etiqueta||'') : '';
       $('p-beneficios').value = p ? (p.beneficios||'') : '';
       $('p-modouso').value = p ? (p.modo_uso||'') : '';
       $('p-ingredientes').value = p ? (p.ingredientes||'') : '';
@@ -1773,7 +1784,8 @@
         precio,
         stock: parseInt($('p-stock').value) || 0,
         imagen: $('p-imagen').value.trim() || '📦',
-        activo: $('p-activo').value === 'true'
+        activo: $('p-activo').value === 'true',
+        etiqueta: $('p-etiqueta').value || null
       };
 
       const btn = $('save-product-btn');
