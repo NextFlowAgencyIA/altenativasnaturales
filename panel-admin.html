@@ -1006,6 +1006,7 @@
               <button class="pill" data-ofilter="nuevo">Nuevos</button>
               <button class="pill" data-ofilter="atendido">Atendidos</button>
             </div>
+            <button class="btn btn-primary" id="open-sale">🛒 Registrar venta</button>
             <button class="btn btn-secondary" id="reload-orders">🔄 Actualizar</button>
           </div>
 
@@ -1176,6 +1177,42 @@
   </div>
 
   <!-- ========== MODAL: PRODUCTO (nuevo / editar) ========== -->
+  <!-- ============ MODAL REGISTRAR VENTA ============ -->
+  <div class="modal-bg" id="sale-modal">
+    <div class="modal-card" style="max-width:560px">
+      <div class="modal-head">
+        <h3>🛒 Registrar venta en mostrador</h3>
+        <button class="close-btn" data-close="sale-modal">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="field-row">
+          <div class="field">
+            <label>Sucursal que vende *</label>
+            <select id="sale-sucursal"></select>
+          </div>
+          <div class="field">
+            <label>Método de pago</label>
+            <select id="sale-pago">
+              <option value="efectivo">💵 Efectivo</option>
+              <option value="tarjeta">💳 Tarjeta</option>
+              <option value="transferencia">🏦 Transferencia</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Productos vendidos</label>
+          <div id="sale-items" style="display:grid;gap:8px;"></div>
+          <button type="button" class="btn btn-secondary" id="sale-add-item" style="margin-top:8px;">+ Agregar producto</button>
+        </div>
+        <div style="text-align:right;font-size:1.05rem;margin-top:6px;">Total: <strong id="sale-total">$0.00</strong></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" data-close="sale-modal">Cancelar</button>
+        <button class="btn btn-primary" id="save-sale-btn">Registrar venta</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-bg" id="product-modal">
     <div class="modal-card" style="max-width:560px">
       <div class="modal-head">
@@ -1203,9 +1240,14 @@
             <input type="number" id="p-precio" placeholder="250" min="0" step="0.5" />
           </div>
           <div class="field">
-            <label>Stock (piezas)</label>
-            <input type="number" id="p-stock" placeholder="10" min="0" step="1" />
+            <label>Stock total</label>
+            <input type="text" id="p-stock" disabled placeholder="0 pzas" title="Suma automática de las sucursales" />
           </div>
+        </div>
+        <div class="field">
+          <label>Stock por sucursal</label>
+          <div id="p-stock-grid" style="display:grid;grid-template-columns:1fr 110px;gap:6px 10px;align-items:center;max-height:220px;overflow-y:auto;padding:4px 2px;"></div>
+          <div class="field-hint">Existencias de este producto en cada tienda — el total se suma solo</div>
         </div>
         <div class="field">
           <label>Descripción corta</label>
@@ -1739,7 +1781,24 @@
       ).join('') || '<option value="">— crea una categoría primero —</option>';
     }
 
-    function openProductModal(id = null){
+    function buildStockGrid(invMap){
+      const grid = $('p-stock-grid');
+      grid.innerHTML = sucursales.map(s => `
+        <span style="font-size:.84rem;font-weight:600;">${esc(s.nombre)}</span>
+        <input type="number" min="0" step="1" class="stock-suc" data-sucursal="${s.id}" value="${invMap[s.id] ?? 0}" />
+      `).join('') || '<span style="font-size:.84rem;color:var(--muted);">Primero crea sucursales</span>';
+      grid.querySelectorAll('.stock-suc').forEach(i => i.addEventListener('input', updateStockTotal));
+      updateStockTotal();
+    }
+
+    function updateStockTotal(){
+      let t = 0;
+      document.querySelectorAll('#p-stock-grid .stock-suc').forEach(i => { t += parseInt(i.value) || 0; });
+      $('p-stock').value = t + ' pzas';
+      return t;
+    }
+
+    async function openProductModal(id = null){
       editingProductId = id;
       const p = id ? productos.find(x => x.id === id) : null;
       $('product-modal-title').textContent = p ? 'Editar producto' : 'Nuevo producto';
@@ -1748,7 +1807,18 @@
       $('p-nombre').value = p ? (p.nombre||'') : '';
       $('p-marca').value = p ? (p.marca||'') : '';
       $('p-precio').value = p ? (p.precio ?? '') : '';
-      $('p-stock').value = p ? (p.stock ?? '') : '';
+      // Stock por sucursal (tabla inventario)
+      let invMap = {};
+      if (p){
+        try {
+          const { data: inv } = await supabaseClient
+            .from('inventario')
+            .select('sucursal_id, stock')
+            .eq('producto_id', p.id);
+          (inv || []).forEach(r => { invMap[r.sucursal_id] = r.stock; });
+        } catch(e){ console.error('Error leyendo inventario:', e); }
+      }
+      buildStockGrid(invMap);
       $('p-desc').value = p ? (p.descripcion||'') : '';
       $('p-imagen').value = p ? (p.imagen||'') : '💊';
       $('p-activo').value = p ? String(p.activo !== false) : 'true';
@@ -1782,7 +1852,7 @@
         modo_uso: $('p-modouso').value.trim(),
         contraindicaciones: $('p-contra').value.trim(),
         precio,
-        stock: parseInt($('p-stock').value) || 0,
+        stock: updateStockTotal(),
         imagen: $('p-imagen').value.trim() || '📦',
         activo: $('p-activo').value === 'true',
         etiqueta: $('p-etiqueta').value || null
@@ -1791,11 +1861,28 @@
       const btn = $('save-product-btn');
       btn.disabled = true; btn.textContent = 'Guardando...';
 
-      let error;
+      let error, prodId = editingProductId;
       if (editingProductId){
         ({ error } = await supabaseClient.from('productos').update(data).eq('id', editingProductId));
       } else {
-        ({ error } = await supabaseClient.from('productos').insert(data));
+        const res = await supabaseClient.from('productos').insert(data).select().single();
+        error = res.error;
+        if (res.data) prodId = res.data.id;
+      }
+
+      // Guardar existencias por sucursal
+      if (!error && prodId){
+        const filas = [...document.querySelectorAll('#p-stock-grid .stock-suc')].map(i => ({
+          producto_id: prodId,
+          sucursal_id: parseInt(i.dataset.sucursal),
+          stock: parseInt(i.value) || 0
+        }));
+        if (filas.length){
+          const { error: invError } = await supabaseClient
+            .from('inventario')
+            .upsert(filas, { onConflict: 'producto_id,sucursal_id' });
+          if (invError) error = invError;
+        }
       }
 
       btn.disabled = false;
@@ -1822,6 +1909,120 @@
       toast('Actualizando...');
       await loadAll();
       toast('✓ Pedidos actualizados');
+    });
+
+    // ================================================================
+    //  REGISTRAR VENTA EN MOSTRADOR
+    // ================================================================
+    let saleInv = {};
+
+    async function loadSaleInv(){
+      saleInv = {};
+      const sucId = parseInt($('sale-sucursal').value);
+      if (!sucId) return;
+      try {
+        const { data } = await supabaseClient
+          .from('inventario')
+          .select('producto_id, stock')
+          .eq('sucursal_id', sucId);
+        (data || []).forEach(r => { saleInv[r.producto_id] = r.stock; });
+      } catch(e){ console.error('inventario venta:', e); }
+    }
+
+    function saleProductOptions(selected){
+      const activos = productos.filter(p => p.activo !== false);
+      return '<option value="">— Elegir producto —</option>' + activos.map(p => {
+        const disp = saleInv[p.id];
+        const dispTxt = (disp === undefined) ? '' : ` · disp: ${disp}`;
+        return `<option value="${p.id}" ${p.id === selected ? 'selected' : ''}>${esc(p.nombre)}${p.marca ? ' · ' + esc(p.marca) : ''} — $${p.precio}${dispTxt}</option>`;
+      }).join('');
+    }
+
+    function addSaleRow(){
+      const row = document.createElement('div');
+      row.style.cssText = 'display:grid;grid-template-columns:1fr 70px 80px 30px;gap:8px;align-items:center;';
+      row.innerHTML = `
+        <select class="sale-prod">${saleProductOptions()}</select>
+        <input type="number" class="sale-qty" value="1" min="1" step="1" />
+        <span class="sale-sub" style="font-weight:700;text-align:right;">$0.00</span>
+        <button type="button" class="sale-del close-btn" title="Quitar">×</button>
+      `;
+      row.querySelector('.sale-prod').addEventListener('change', recalcSale);
+      row.querySelector('.sale-qty').addEventListener('input', recalcSale);
+      row.querySelector('.sale-del').addEventListener('click', () => { row.remove(); recalcSale(); });
+      $('sale-items').appendChild(row);
+    }
+
+    function recalcSale(){
+      let total = 0;
+      document.querySelectorAll('#sale-items > div').forEach(row => {
+        const pid = parseInt(row.querySelector('.sale-prod').value);
+        const qty = parseInt(row.querySelector('.sale-qty').value) || 0;
+        const p = productos.find(x => x.id === pid);
+        const sub = p ? p.precio * qty : 0;
+        row.querySelector('.sale-sub').textContent = '$' + sub.toFixed(2);
+        total += sub;
+      });
+      $('sale-total').textContent = '$' + total.toFixed(2);
+    }
+
+    $('open-sale').addEventListener('click', async () => {
+      $('sale-sucursal').innerHTML = sucursales.filter(s => s.activa !== false)
+        .map(s => `<option value="${s.id}">${esc(s.nombre)}</option>`).join('');
+      $('sale-items').innerHTML = '';
+      $('sale-pago').value = 'efectivo';
+      await loadSaleInv();
+      addSaleRow();
+      recalcSale();
+      openModal('sale-modal');
+    });
+
+    $('sale-sucursal').addEventListener('change', async () => {
+      await loadSaleInv();
+      document.querySelectorAll('#sale-items .sale-prod').forEach(sel => {
+        const cur = parseInt(sel.value) || '';
+        sel.innerHTML = saleProductOptions(cur);
+      });
+      recalcSale();
+    });
+
+    $('sale-add-item').addEventListener('click', addSaleRow);
+
+    $('save-sale-btn').addEventListener('click', async () => {
+      const sucursalId = parseInt($('sale-sucursal').value);
+      if (!sucursalId) return toast('Elige la sucursal', true);
+
+      const items = [];
+      let problema = null;
+      document.querySelectorAll('#sale-items > div').forEach(row => {
+        const pid = parseInt(row.querySelector('.sale-prod').value);
+        const qty = parseInt(row.querySelector('.sale-qty').value) || 0;
+        if (!pid || qty <= 0) return;
+        const disp = saleInv[pid];
+        const p = productos.find(x => x.id === pid);
+        if (disp !== undefined && qty > disp){
+          problema = `Solo hay ${disp ?? 0} de "${p ? p.nombre : 'ese producto'}" en esta sucursal`;
+        }
+        items.push({ producto_id: pid, cantidad: qty });
+      });
+      if (problema) return toast(problema, true);
+      if (!items.length) return toast('Agrega al menos un producto', true);
+
+      const btn = $('save-sale-btn');
+      btn.disabled = true; btn.textContent = 'Registrando...';
+
+      const { data, error } = await supabaseClient.rpc('registrar_venta', {
+        p_sucursal_id: sucursalId,
+        p_metodo_pago: $('sale-pago').value,
+        p_items: items
+      });
+
+      btn.disabled = false; btn.textContent = 'Registrar venta';
+      if (error) return toast('Error: ' + error.message, true);
+
+      closeModal('sale-modal');
+      toast(`✓ Venta registrada — total $${Number(data.total).toFixed(2)}`);
+      await loadAll();
     });
 
     function estadoBadge(estado){
