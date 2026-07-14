@@ -1200,6 +1200,10 @@
           </div>
         </div>
         <div class="field">
+          <label>Nombre del cliente (opcional)</label>
+          <input type="text" id="sale-cliente" placeholder="Se registra como 'Venta en mostrador' si se deja vacío" maxlength="60" />
+        </div>
+        <div class="field">
           <label>Productos vendidos</label>
           <div id="sale-items" style="display:grid;gap:8px;"></div>
           <button type="button" class="btn btn-secondary" id="sale-add-item" style="margin-top:8px;">+ Agregar producto</button>
@@ -1971,6 +1975,7 @@
         .map(s => `<option value="${s.id}">${esc(s.nombre)}</option>`).join('');
       $('sale-items').innerHTML = '';
       $('sale-pago').value = 'efectivo';
+      $('sale-cliente').value = '';
       await loadSaleInv();
       addSaleRow();
       recalcSale();
@@ -2014,7 +2019,8 @@
       const { data, error } = await supabaseClient.rpc('registrar_venta', {
         p_sucursal_id: sucursalId,
         p_metodo_pago: $('sale-pago').value,
-        p_items: items
+        p_items: items,
+        p_cliente: $('sale-cliente').value.trim()
       });
 
       btn.disabled = false; btn.textContent = 'Registrar venta';
