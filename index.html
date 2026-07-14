@@ -1713,13 +1713,22 @@
       return q.split(" ").filter(w => w.length >= 4 && !STOPWORDS.has(w));
     }
 
-    async function searchAndRespond(raw){
+    function detectInfoIntent(qn){
+      if (/(para que sirve|para que es|que beneficios|beneficios de|sirve para|que hace|para que se usa)/.test(qn)) return "beneficios";
+      if (/(como se toma|como tomar|modo de uso|como se usa|como usarlo|dosis|cuantas capsulas|cuando tomar)/.test(qn)) return "uso";
+      if (/(contraindicacion|efectos secundarios|es seguro)/.test(qn)) return "contra";
+      if (/(ingredientes|que contiene|composicion)/.test(qn)) return "ingredientes";
+      return null;
+    }
+
+    async function searchAndRespond(raw, intentHeredado = null){
       const q = sanitizeQuery(raw);
       if (!q){
         addMessage("Escribe el nombre del producto que buscas y lo consulto en nuestro catálogo.");
         return;
       }
       const keywords = extractKeywords(q);
+      const intent = intentHeredado || detectInfoIntent(q);
       addMessage("🔎 Déjame revisar nuestro catálogo...");
       try {
         // 1) Búsqueda directa por nombre o marca
@@ -1745,8 +1754,9 @@
         }
 
         if (exactos.length){
-          addMessage(exactos.length === 1 ? "¡Sí lo tenemos disponible! 🎉" : "¡Encontré estas opciones en nuestro catálogo! 🎉");
-          addProductResults(exactos);
+          addMessage(intent ? "¡Claro! Esto es lo que te puedo contar:" : (exactos.length === 1 ? "¡Sí lo tenemos disponible! 🎉" : "¡Encontré estas opciones en nuestro catálogo! 🎉"));
+          addProductResults(exactos, false, intent);
+          if (intent) addMessage("ℹ️ Esta información es orientativa y no sustituye la indicación de un profesional de la salud.");
           return;
         }
 
@@ -1757,18 +1767,18 @@
           addOptions([
             { label: `✅ Sí, buscar ${sugerencia}`, action: () => {
               addMessage(sugerencia, "user");
-              searchAndRespond(sugerencia);
+              searchAndRespond(sugerencia, intent);
             }},
             { label: "❌ No, era otra cosa", action: () => {
               addMessage("No, era otra cosa", "user");
-              buscarAlternativas(raw, q);
+              buscarAlternativas(raw, q, intent);
             }}
           ]);
           return;
         }
 
         // 3) Alternativas por beneficios / descripción / categoría
-        await buscarAlternativas(raw, q);
+        await buscarAlternativas(raw, q, intent);
       } catch (e){
         console.error("Error buscando en Supabase:", e);
         addMessage("Tuve un problema consultando el catálogo en este momento. Puedes preguntar directo a una sucursal:");
@@ -1776,7 +1786,7 @@
       }
     }
 
-    async function buscarAlternativas(raw, q){
+    async function buscarAlternativas(raw, q, intent = null){
       try {
         // Búsqueda local por beneficios/descripción/categoría (ignora acentos)
         const keywords = extractKeywords(q);
@@ -1806,7 +1816,8 @@
 
         if (alternativas.length){
           addMessage("Según lo que buscas, esto de nuestro catálogo te puede servir 🌿");
-          addProductResults(alternativas, true);
+          addProductResults(alternativas, true, intent);
+          if (intent) addMessage("ℹ️ Esta información es orientativa y no sustituye la indicación de un profesional de la salud.");
           return;
         }
 
@@ -1858,7 +1869,7 @@
       return best;
     }
 
-    function addProductResults(lista, esAlternativa = false){
+    function addProductResults(lista, esAlternativa = false, intent = null){
       lista.forEach(item => {
         // Acepta productos en formato Supabase (nombre) o local (name)
         const p = item.nombre !== undefined ? mapProduct(item) : item;
@@ -1868,9 +1879,25 @@
         card.className = "chat-branch";
         const descCorta = (p.desc || p.beneficios || "").slice(0, 90);
         const d = disponibilidad(p.id);
+        let infoHTML = "";
+        if (intent){
+          const campos = {
+            beneficios: ["🌿 ¿Para qué sirve?", p.beneficios || p.desc],
+            uso: ["📋 Modo de uso", p.modo_uso],
+            contra: ["⚠️ Contraindicaciones", p.contra],
+            ingredientes: ["🧪 Ingredientes", p.ingredientes]
+          };
+          const par = campos[intent] || [];
+          if (par[1]){
+            infoHTML = `<div style="background:var(--green-50);border-radius:10px;padding:8px 10px;margin:4px 0 6px;font-size:.85rem"><strong>${par[0]}:</strong> ${String(par[1]).slice(0, 260)}</div>`;
+          } else {
+            infoHTML = `<small style="display:block;color:var(--muted);margin:2px 0 6px">Aún no tengo ese dato registrado — puedes confirmarlo con la sucursal 👇</small>`;
+          }
+        }
         card.innerHTML = `
           <strong>${prodIconInline(p.icon)} ${p.name}${p.marca ? " · " + p.marca : ""}</strong>
           <small style="display:block;color:var(--muted);margin:3px 0 6px">${descCorta}${esAlternativa && p.beneficios ? "" : ""}</small>
+          ${infoHTML}
           <div style="font-weight:900;color:var(--green-800);margin-bottom:4px">$${p.price}</div>
           ${d ? `<small style="display:block;color:var(--green-800);font-weight:700;margin-bottom:2px">${d.texto}</small>` : ""}
           ${d && d.textoSin ? `<small style="display:block;color:#b91c1c;margin-bottom:6px">${d.textoSin}</small>` : ""}
@@ -1950,6 +1977,9 @@
         name: p.nombre,
         desc: p.descripcion || "",
         beneficios: p.beneficios || "",
+        modo_uso: p.modo_uso || "",
+        ingredientes: p.ingredientes || "",
+        contra: p.contraindicaciones || "",
         price: p.precio,
         icon: p.imagen || "🌿",
         category: p.categoria || "",
