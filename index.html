@@ -2020,7 +2020,7 @@
       if (!inv || !inv.length || !dbSucursales.length) return null;
       const nom = id => {
         const s = dbSucursales.find(x => x.id === id);
-        return s ? String(s.nombre).replace(/^Soriana\s+/i, "") : "Sucursal";
+        return s ? String(s.nombre).replace(/^AN\s+/i, "").replace(/^Soriana\s+/i, "") : "Sucursal";
       };
       const con = inv.filter(r => r.stock > 0);
       const sin = inv.filter(r => !r.stock || r.stock <= 0);
@@ -2028,7 +2028,7 @@
         con, sin,
         total: inv.length,
         texto: con.length
-          ? `✓ Disponible en: ${con.map(r => `${nom(r.sucursal_id)} (${r.stock})`).join(", ")}`
+          ? `✓ Disponible en: ${con.map(r => nom(r.sucursal_id)).join(", ")}`
           : "✗ Agotado en todas las sucursales por el momento",
         textoSin: (con.length && sin.length)
           ? `✗ Agotado en: ${sin.map(r => nom(r.sucursal_id)).join(", ")}`
