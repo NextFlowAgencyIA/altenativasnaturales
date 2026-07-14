@@ -1785,7 +1785,17 @@
           alternativas = products
             .map(p => {
               const texto = normalize(`${p.name} ${p.marca || ""} ${p.desc || ""} ${p.beneficios || ""} ${p.category || ""}`);
-              const score = keywords.reduce((acc, w) => acc + (texto.includes(w) ? 1 : 0), 0);
+              const palabrasTexto = texto.split(/\s+/).filter(t => t.length >= 4);
+              const score = keywords.reduce((acc, w) => {
+                if (texto.includes(w)) return acc + 2; // coincidencia exacta vale doble
+                // tolerancia a errores de dedo (Levenshtein) contra cada palabra del producto
+                const parecida = palabrasTexto.some(t => {
+                  if (w[0] !== t[0]) return false;
+                  const d = levenshtein(w, t);
+                  return d > 0 && d <= Math.max(1, Math.floor(t.length / 4) + 1);
+                });
+                return acc + (parecida ? 1 : 0);
+              }, 0);
               return { p, score };
             })
             .filter(x => x.score > 0)
