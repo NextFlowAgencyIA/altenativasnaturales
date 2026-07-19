@@ -2066,7 +2066,9 @@
           <td>${estadoBadge(o.estado)}</td>
           <td>${fmtDate(o.created_at)}</td>
           <td class="row-actions">
-            ${!yaAtendido ? `<button class="row-action-btn" title="Marcar como atendido" data-odone="${o.id}">✅</button>` : ''}
+            ${!yaAtendido
+              ? `<button class="row-action-btn" title="Confirmar pedido (descuenta el stock de la sucursal)" data-odone="${o.id}">⬜</button>`
+              : `<span title="Pedido confirmado" style="font-size:1.05rem;">✅</span>`}
             <button class="row-action-btn danger" title="Eliminar" data-odel="${o.id}">🗑️</button>
           </td>
         </tr>`;
