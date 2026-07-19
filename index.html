@@ -2024,6 +2024,7 @@
           const crudo = String(s.whatsapp || s.telefono || "").replace(/\D/g, "");
           const phone = crudo.length === 10 ? "52" + crudo : crudo;
           return {
+            id: s.id,
             name: s.nombre,
             zone: s.zona || s.direccion || "",
             phone: phone,
@@ -2284,6 +2285,17 @@
       
       message += `\n*Total estimado: $${getCartTotal()}*\n\n¿Me podrían confirmar disponibilidad y forma de pago? Gracias.`;
       
+      // Registrar el pedido en el sistema para seguimiento en el panel
+      if (branch && branch.id){
+        const items = cart
+          .filter(it => it.id > 0)
+          .map(it => ({ producto_id: it.id, cantidad: it.qty }));
+        if (items.length){
+          supabaseClient.rpc('registrar_pedido_web', { p_sucursal_id: branch.id, p_items: items })
+            .then(r => { if (r.error) console.error('registro pedido web:', r.error); });
+        }
+      }
+
       const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
       window.open(url, "_blank");
       closeCheckout();

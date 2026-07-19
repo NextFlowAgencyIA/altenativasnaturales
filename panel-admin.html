@@ -2077,11 +2077,12 @@
       const doneBtn = e.target.closest('[data-odone]');
       const delBtn = e.target.closest('[data-odel]');
       if (doneBtn){
-        const { error } = await supabaseClient.from('pedidos')
-          .update({ estado:'atendido', updated_at: new Date().toISOString() })
-          .eq('id', Number(doneBtn.dataset.odone));
+        if (!confirm('¿Confirmar este pedido? Se descontará el stock de la sucursal.')) return;
+        const { error } = await supabaseClient.rpc('confirmar_pedido_web', {
+          p_pedido_id: Number(doneBtn.dataset.odone)
+        });
         if (error) return toast('Error: ' + error.message, true);
-        toast('✓ Pedido marcado como atendido');
+        toast('✓ Pedido confirmado — stock descontado de la sucursal');
         await loadAll();
       }
       if (delBtn){
