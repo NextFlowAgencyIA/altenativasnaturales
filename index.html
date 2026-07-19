@@ -1428,7 +1428,7 @@
   </script>
 
   <script>
-    const branches = [
+    let branches = [
       { name: "Soriana San Miguel", zone: "San Miguel, Apodaca", phone: "528134026211", display: "81 3402 6211" },
       { name: "Soriana Huinalá", zone: "Huinalá, Apodaca", phone: "528134026231", display: "81 3402 6231" },
       { name: "Soriana Valle Soleado", zone: "Valle Soleado, Guadalupe", phone: "528126100388", display: "81 2610 0388" },
@@ -2013,11 +2013,29 @@
       try {
         const [rp, rs, ri] = await Promise.all([
           supabaseClient.from("productos").select("*").eq("activo", true).order("nombre"),
-          supabaseClient.from("sucursales").select("id, nombre").order("id"),
+          supabaseClient.from("sucursales").select("*").order("id"),
           supabaseClient.from("inventario").select("producto_id, sucursal_id, stock")
         ]);
         if (rp.error) throw rp.error;
-        dbSucursales = rs.data || [];
+        dbSucursales = (rs.data || []).filter(s => s.activa !== false);
+
+        // Sucursales dinámicas: lo que se agregue/edite en el panel aparece aquí solo
+        const dinamicas = dbSucursales.map(s => {
+          const crudo = String(s.whatsapp || s.telefono || "").replace(/\D/g, "");
+          const phone = crudo.length === 10 ? "52" + crudo : crudo;
+          return {
+            name: s.nombre,
+            zone: s.zona || s.direccion || "",
+            phone: phone,
+            display: s.whatsapp || s.telefono || ""
+          };
+        }).filter(b => b.phone.length >= 12);
+        if (dinamicas.length){
+          branches = dinamicas;
+          renderBranches();
+          console.log(`Sucursales cargadas desde Supabase: ${branches.length} ✅`);
+        }
+
         inventarioMap = {};
         (ri.data || []).forEach(r => {
           (inventarioMap[r.producto_id] = inventarioMap[r.producto_id] || []).push(r);
