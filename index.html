@@ -1713,6 +1713,10 @@
       return q.split(" ").filter(w => w.length >= 4 && !STOPWORDS.has(w));
     }
 
+    function esFueraDeTema(qn){
+      return /(chiste|adivinanza|cuentame un|cuentame una|clima|temperatura|va a llover|futbol|partido|mundial|liga mx|politica|presidente|eleccion|gobierno|tarea|matematicas|cuanto es [0-9]|capital de|quien es|quien fue|quien gano|cancion|musica|pelicula|serie|novela|poema|cuento|historia de|chatgpt|openai|inteligencia artificial|quien te creo|quien te hizo|quien te programo|como te llamas|que eres|eres un robot|eres humano|traduce|traducir|hablas ingles|juguemos|un juego|hora es|que dia es)/.test(qn);
+    }
+
     function detectInfoIntent(qn){
       if (/(para que sirve|para que es|que beneficios|beneficios de|sirve para|que hace|para que se usa)/.test(qn)) return "beneficios";
       if (/(como se toma|como tomar|modo de uso|como se usa|como usarlo|dosis|cuantas capsulas|cuando tomar)/.test(qn)) return "uso";
@@ -1729,6 +1733,20 @@
       }
       const keywords = extractKeywords(q);
       const intent = intentHeredado || detectInfoIntent(q);
+
+      // Tema ajeno a la tienda: responder con elegancia profesional
+      if (esFueraDeTema(q)){
+        addMessage("Soy el asistente virtual de Alternativas Naturales 🌿 y estoy capacitado únicamente para ayudarte con temas de nuestra tienda: productos, precios, disponibilidad, recomendaciones de bienestar y pedidos. ¿Te puedo ayudar con algo de eso?");
+        addOptions([
+          { label: "🛍️ Buscar un producto", action: () => {
+            addMessage("Escribe el nombre del producto o lo que necesitas (por ejemplo: \"algo para dormir\").");
+            chatInput.focus();
+          }},
+          { label: "📍 Ver sucursales", action: () => addBranchOptions() }
+        ]);
+        return;
+      }
+
       addMessage("🔎 Déjame revisar nuestro catálogo...");
       try {
         // 1) Búsqueda directa por nombre o marca
