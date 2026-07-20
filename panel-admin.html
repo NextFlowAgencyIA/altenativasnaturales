@@ -1441,7 +1441,12 @@
       if (session) {
         loginGate.style.display = 'none';
         document.getElementById('user-name').textContent = session.user.email.split('@')[0];
-        initApp();
+        // Fix de carrera: esperar a que TODO el código esté leído antes de arrancar
+        if (typeof initApp === 'function') {
+          initApp();
+        } else {
+          window.addEventListener('load', () => initApp());
+        }
       } else {
         loginGate.style.display = 'flex';
       }
