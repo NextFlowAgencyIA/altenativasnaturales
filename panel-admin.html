@@ -1288,8 +1288,12 @@
         </div>
         <div class="field-row">
           <div class="field">
-            <label>Imagen (emoji o URL)</label>
+            <label>Imagen frente (emoji o URL)</label>
             <input type="text" id="p-imagen" placeholder="💊 o https://..." />
+          </div>
+          <div class="field">
+            <label>Imagen reverso (URL, opcional)</label>
+            <input type="text" id="p-imagen2" placeholder="https://... (etiqueta, ingredientes)" />
           </div>
           <div class="field">
             <label>Estado</label>
@@ -1982,6 +1986,7 @@
       buildStockGrid(invMap);
       $('p-desc').value = p ? (p.descripcion||'') : '';
       $('p-imagen').value = p ? (p.imagen||'') : '💊';
+      $('p-imagen2').value = p.imagen2 || '';
       $('p-activo').value = p ? String(p.activo !== false) : 'true';
       $('p-etiqueta').value = p ? (p.etiqueta||'') : '';
       $('p-beneficios').value = p ? (p.beneficios||'') : '';
@@ -2019,7 +2024,8 @@
         contraindicaciones: $('p-contra').value.trim(),
         precio,
         stock: updateStockTotal(),
-        imagen: $('p-imagen').value.trim() || '📦',
+imagen: $('p-imagen').value.trim() || '📦',
+        imagen2: $('p-imagen2').value.trim() || null,
         activo: $('p-activo').value === 'true',
         etiqueta: $('p-etiqueta').value || null
       };
