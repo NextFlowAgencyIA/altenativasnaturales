@@ -1942,7 +1942,7 @@
 
     function prodIconInline(imagen){
       if (imagen && String(imagen).startsWith("http")){
-        return `<img src="${imagen}" alt="" style="width:22px;height:22px;object-fit:cover;border-radius:6px;vertical-align:middle">`;
+        return `<img src="${imagen}" alt="" style="width:22px;height:22px;object-fit:contain;background:#fff;border-radius:6px;vertical-align:middle">`;
       }
       return imagen || "🌿";
     }
@@ -2115,7 +2115,7 @@
 
     function prodIconBig(p){
       if (p.icon && String(p.icon).startsWith("http")){
-        return `<img src="${p.icon}" alt="${p.name}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`;
+        return `<img src="${p.icon}" alt="${p.name}" style="width:100%;height:100%;object-fit:contain;padding:10px;background:#fff;border-radius:inherit">`;
       }
       return p.icon || "🌿";
     }
