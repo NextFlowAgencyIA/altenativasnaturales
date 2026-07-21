@@ -972,6 +972,7 @@
               <div class="filter-pills" id="product-pills"></div>
             </div>
             <div style="display:flex;gap:8px">
+              <button class="btn btn-secondary" id="open-import">📄 Importar CSV</button>
               <button class="btn btn-primary" id="open-add-product">+ Nuevo producto</button>
             </div>
           </div>
@@ -1213,6 +1214,33 @@
       <div class="modal-foot">
         <button class="btn btn-secondary" data-close="sale-modal">Cancelar</button>
         <button class="btn btn-primary" id="save-sale-btn">Registrar venta</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="import-modal">
+    <div class="modal-card" style="max-width:620px">
+      <div class="modal-head">
+        <h3>📄 Importar catálogo desde CSV</h3>
+        <button class="close-btn" data-close="import-modal">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Archivo CSV</label>
+          <input type="file" id="import-file" accept=".csv,text/csv" />
+          <small style="display:block;color:var(--muted);margin-top:8px;line-height:1.5">
+            Columnas: <strong>nombre</strong> (obligatoria), marca, categoria, precio, descripcion,
+            beneficios, ingredientes, modo_uso, contraindicaciones, imagen.<br>
+            Los productos que ya existan (mismo nombre y marca) se actualizan.
+            El stock entra en ceros y se captura después en la cuadrícula de cada producto.
+          </small>
+        </div>
+        <div id="import-preview" style="display:none;background:var(--green-50);border-radius:10px;padding:10px;margin-top:10px;font-size:.85rem;max-height:220px;overflow:auto"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" id="import-plantilla">⬇️ Plantilla</button>
+        <button class="btn btn-secondary" data-close="import-modal">Cancelar</button>
+        <button class="btn btn-primary" id="import-run" disabled>Importar</button>
       </div>
     </div>
   </div>
@@ -1556,6 +1584,130 @@
     });
 
     // ---------- Carga de datos ----------
+    // ══════ IMPORTADOR CSV ══════
+    let importFilas = [];
+
+    function parseCSV(texto){
+      texto = texto.replace(/^\uFEFF/, '');
+      const filas = []; let campo = ''; let fila = []; let enComillas = false;
+      for (let i = 0; i < texto.length; i++){
+        const c = texto[i];
+        if (enComillas){
+          if (c === '"'){
+            if (texto[i+1] === '"'){ campo += '"'; i++; } else enComillas = false;
+          } else campo += c;
+        } else if (c === '"'){ enComillas = true; }
+        else if (c === ',' || c === ';'){ fila.push(campo); campo = ''; }
+        else if (c === '\n'){ fila.push(campo); filas.push(fila); fila = []; campo = ''; }
+        else if (c !== '\r'){ campo += c; }
+      }
+      if (campo !== '' || fila.length){ fila.push(campo); filas.push(fila); }
+      return filas.filter(f => f.some(x => String(x).trim() !== ''));
+    }
+
+    function normCol(s){
+      return String(s || '').trim().toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z_]/g, '');
+    }
+
+    function abrirImport(){
+      importFilas = [];
+      $('import-file').value = '';
+      $('import-preview').style.display = 'none';
+      $('import-run').disabled = true;
+      openModal('import-modal');
+    }
+
+    function leerArchivoImport(file){
+      const lector = new FileReader();
+      lector.onload = () => {
+        try {
+          const filas = parseCSV(lector.result);
+          if (filas.length < 2) throw new Error('El archivo no tiene filas de datos.');
+          const cols = filas[0].map(normCol);
+          const iNombre = cols.indexOf('nombre');
+          if (iNombre === -1) throw new Error('Falta la columna "nombre" en la primera fila.');
+
+          const campos = ['marca','categoria','precio','descripcion','beneficios','ingredientes','modo_uso','contraindicaciones','imagen'];
+          importFilas = [];
+          const avisos = [];
+          for (let f = 1; f < filas.length; f++){
+            const r = filas[f];
+            const nombre = String(r[iNombre] || '').trim();
+            if (!nombre){ avisos.push('Fila ' + (f+1) + ': sin nombre, se omite'); continue; }
+            const obj = { nombre: nombre, stock: 0, activo: true };
+            campos.forEach(function(c){
+              const idx = cols.indexOf(c);
+              if (idx !== -1) obj[c] = String(r[idx] || '').trim();
+            });
+            const precioNum = parseFloat(String(obj.precio || '').replace(/[^0-9.]/g, ''));
+            obj.precio = isNaN(precioNum) ? 0 : precioNum;
+            if (!obj.imagen) obj.imagen = '📦';
+            if (obj.categoria && !categorias.some(function(c){ return c.nombre === obj.categoria; })){
+              avisos.push('Fila ' + (f+1) + ': la categoría "' + obj.categoria + '" no existe todavía');
+            }
+            importFilas.push(obj);
+          }
+
+          const muestra = importFilas.slice(0, 5).map(function(o){
+            return '• ' + o.nombre + (o.marca ? ' · ' + o.marca : '') + ' — $' + o.precio;
+          }).join('<br>');
+          $('import-preview').innerHTML =
+            '<strong>' + importFilas.length + ' producto(s) listos para importar</strong><br>' + muestra +
+            (importFilas.length > 5 ? '<br><em>…y ' + (importFilas.length - 5) + ' más</em>' : '') +
+            (avisos.length ? '<br><br><span style="color:#b91c1c">' + avisos.slice(0,8).join('<br>') + '</span>' : '');
+          $('import-preview').style.display = 'block';
+          $('import-run').disabled = importFilas.length === 0;
+        } catch (e){
+          $('import-preview').innerHTML = '<span style="color:#b91c1c">' + e.message + '</span>';
+          $('import-preview').style.display = 'block';
+          $('import-run').disabled = true;
+        }
+      };
+      lector.readAsText(file, 'UTF-8');
+    }
+
+    async function ejecutarImport(){
+      const btn = $('import-run');
+      btn.disabled = true; btn.textContent = 'Importando...';
+      let creados = 0, actualizados = 0, fallidos = 0;
+      for (const fila of importFilas){
+        try {
+          const existente = productos.find(function(pr){
+            return String(pr.nombre).trim().toLowerCase() === fila.nombre.toLowerCase() &&
+                   String(pr.marca || '').trim().toLowerCase() === String(fila.marca || '').trim().toLowerCase();
+          });
+          if (existente){
+            const cambios = Object.assign({}, fila);
+            delete cambios.stock; delete cambios.activo;
+            const res = await supabaseClient.from('productos').update(cambios).eq('id', existente.id);
+            if (res.error) throw res.error;
+            actualizados++;
+          } else {
+            const res = await supabaseClient.from('productos').insert(fila);
+            if (res.error) throw res.error;
+            creados++;
+          }
+        } catch (e){ console.error('Import:', fila.nombre, e); fallidos++; }
+      }
+      btn.textContent = 'Importar';
+      closeModal('import-modal');
+      toast('✓ ' + creados + ' creados · ' + actualizados + ' actualizados' + (fallidos ? ' · ' + fallidos + ' con error' : ''), fallidos > 0);
+      await loadAll();
+    }
+
+    function descargarPlantilla(){
+      const cab = 'nombre,marca,categoria,precio,descripcion,beneficios,ingredientes,modo_uso,contraindicaciones,imagen';
+      const ej = 'Ashwagandha,Now Foods,Suplementos,320,Cápsulas de 500mg,"Ayuda a reducir el estrés y la ansiedad",Raíz de ashwagandha,1 cápsula al día con alimentos,"No recomendado en embarazo",📦';
+      const blob = new Blob(['\uFEFF' + cab + '\n' + ej], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'plantilla-productos.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
     async function loadAll(){
       const [cRes, sRes, pRes, oRes, uRes] = await Promise.all([
         supabaseClient.from('categorias').select('*').order('nombre'),
@@ -1841,6 +1993,11 @@
       openModal('product-modal');
       setTimeout(() => $('p-nombre').focus(), 100);
     }
+
+    $('open-import').addEventListener('click', abrirImport);
+    $('import-plantilla').addEventListener('click', descargarPlantilla);
+    $('import-file').addEventListener('change', function(e){ if (e.target.files[0]) leerArchivoImport(e.target.files[0]); });
+    $('import-run').addEventListener('click', ejecutarImport);
 
     $('open-add-product').addEventListener('click', () => openProductModal(null));
 
