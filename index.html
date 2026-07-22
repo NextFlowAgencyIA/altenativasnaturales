@@ -1420,6 +1420,16 @@
   </div>
 
   <!-- ============ SUPABASE ============ -->
+  <!-- Visor de fotos a pantalla completa -->
+  <div id="lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9999;align-items:center;justify-content:center;flex-direction:column">
+    <button id="lb-close" style="position:absolute;top:16px;right:20px;background:rgba(255,255,255,.15);color:#fff;border:none;width:44px;height:44px;border-radius:50%;font-size:1.5rem;cursor:pointer">×</button>
+    <button id="lb-prev" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);color:#fff;border:none;width:52px;height:52px;border-radius:50%;font-size:1.8rem;cursor:pointer">‹</button>
+    <img id="lb-img" src="" alt="" style="max-width:90vw;max-height:80vh;object-fit:contain;border-radius:12px;background:#fff">
+    <button id="lb-next" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);color:#fff;border:none;width:52px;height:52px;border-radius:50%;font-size:1.8rem;cursor:pointer">›</button>
+    <div id="lb-caption" style="color:#fff;margin-top:16px;font-size:1rem;text-align:center"></div>
+    <div id="lb-dots" style="display:flex;gap:8px;margin-top:12px"></div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     const SUPABASE_URL = 'https://krqyoxpwtbtjomzmgszj.supabase.co';
@@ -2090,6 +2100,16 @@
         `;
       }).join("");
 
+      // Conectar clic en fotos para abrir el visor
+      grid.querySelectorAll("[data-lightbox]").forEach(img => {
+        img.addEventListener("click", () => {
+          const prod = products.find(x => String(x.id) === img.dataset.lightbox);
+          if (!prod) return;
+          const fotos = [prod.icon, prod.icon2].filter(f => f && String(f).startsWith("http"));
+          abrirLightbox(fotos, prod.name, 0);
+        });
+      });
+
       // Conectar botones de agregar
       grid.querySelectorAll(".btn-add").forEach(btn => {
         btn.addEventListener("click", () => addToCart(parseInt(btn.dataset.productId)));
@@ -2168,7 +2188,7 @@
       if (p.icon && String(p.icon).startsWith("http")){
         const fotos = [p.icon, p.icon2].filter(f => f && String(f).startsWith("http"));
         const badge = fotos.length > 1 ? `<span style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;font-size:.7rem;padding:2px 8px;border-radius:999px">📷 ${fotos.length}</span>` : "";
-        return `<img src="${p.icon}" alt="${p.name}" onclick='abrirLightbox(${JSON.stringify(fotos)}, ${JSON.stringify(p.name)}, 0)' style="width:100%;height:100%;object-fit:contain;border-radius:inherit;cursor:zoom-in">${badge}`;
+        return `<img src="${p.icon}" alt="" data-lightbox="${p.id}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit;cursor:zoom-in">${badge}`;
       }
       return p.icon || "🌿";
     }
@@ -2417,15 +2437,6 @@
 
     renderBranches();
   </script>
-  <!-- Visor de fotos a pantalla completa -->
-  <div id="lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9999;align-items:center;justify-content:center;flex-direction:column">
-    <button id="lb-close" style="position:absolute;top:16px;right:20px;background:rgba(255,255,255,.15);color:#fff;border:none;width:44px;height:44px;border-radius:50%;font-size:1.5rem;cursor:pointer">×</button>
-    <button id="lb-prev" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);color:#fff;border:none;width:52px;height:52px;border-radius:50%;font-size:1.8rem;cursor:pointer">‹</button>
-    <img id="lb-img" src="" alt="" style="max-width:90vw;max-height:80vh;object-fit:contain;border-radius:12px;background:#fff">
-    <button id="lb-next" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);color:#fff;border:none;width:52px;height:52px;border-radius:50%;font-size:1.8rem;cursor:pointer">›</button>
-    <div id="lb-caption" style="color:#fff;margin-top:16px;font-size:1rem;text-align:center"></div>
-    <div id="lb-dots" style="display:flex;gap:8px;margin-top:12px"></div>
-  </div>
 
 </body>
 </html>
